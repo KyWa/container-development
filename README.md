@@ -91,7 +91,9 @@ I am not known for my wordsmithing skills, so I will let the `s2i` repository sp
 Source-to-Image (S2I) is a toolkit and workflow for building reproducible container images from source code. S2I produces ready-to-run images by injecting source code into a container image and letting the container prepare that source code for execution. By creating self-assembling builder images, you can version and control your build environments exactly like you use container images to version your runtime environments.
 <hr>
 
-The big `tl;dr` of this is an `assemble` script, which has logic to look at a directory (typically cloned from a Git repository) and a `run` script which will handle the running of your application. There are a few ways in which to get to this point and we will cover a most of them.
+The big **tl;dr** of `s2i` is you get two components to handle things for you. The first is an `assemble` script which handles the building of the Dockerfile and the image itself. The next and final portion is another script that handles the `run` of your script. The `run` script has logic to essentially see what packages exist and then determine which path to start the application. The logic in both scripts is fairly straightforward and works for most situations, but can also be expanded upon by creating your own scripts which allows you to add extra logic into them.
+
+### Using an `s2i` base image
 
 ### Using the `s2i` binary
 `s2i` has its own binary that allows you to do a few things. First of which 
