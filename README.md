@@ -315,7 +315,7 @@ The above `s2i/bin/assemble` script will run during build time and will go and g
 And the same is done for the `run` script:
 
 ```
-user@workstation-$ cat .s2i/bin/assemble
+user@workstation-$ cat .s2i/bin/run
 #!/bin/bash
 
 # this file can be used in place of a Dockerfile
@@ -324,7 +324,16 @@ user@workstation-$ cat .s2i/bin/assemble
 ${STI_SCRIPTS_PATH}/run
 ```
 
-There is no real limit to what you can customize, just the limits of your imagination.
+There is no real limit to what you can customize, just the limits of your imagination. You could even not call the existing `run` script and could have it do something very specific:
+
+```
+user@workstation-$ cat .s2i/bin/run
+#!/bin/bash
+export SOMEVAR=prod
+python3 app.py
+```
+
+The above is a horrible example, but gets the idea across you could do whatever you need/want to do for your application.
 
 Using these custimzations looks like this:
 
