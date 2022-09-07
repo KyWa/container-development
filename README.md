@@ -26,7 +26,7 @@ COPY . .
 RUN python3 -m pip install -r requirements.txt
 
 # Tell the Container what to do when it starts
-CMD [ "python3", "-m" , "flask", "run", "--host=0.0.0.0"]
+CMD ["python3", "-m" , "flask", "run", "--host=0.0.0.0"]
 ```
 
 The above `Dockerfile` will result in a Container Image that will start a Flask application:
@@ -70,7 +70,7 @@ user@workstation-$ curl http://localhost:62069
   </body>
 </html
 
-user@workstation-$ docker logs cool_lamarr
+user@workstation-$ docker logs 8151bd52f0ea
  * Environment: production
    WARNING: This is a development server. Do not use it in a production deployment.
    Use a production WSGI server instead.
@@ -94,7 +94,7 @@ I am not known for my wordsmithing skills, so I will let the `s2i` repository sp
 Source-to-Image (S2I) is a toolkit and workflow for building reproducible container images from source code. S2I produces ready-to-run images by injecting source code into a container image and letting the container prepare that source code for execution. By creating self-assembling builder images, you can version and control your build environments exactly like you use container images to version your runtime environments.
 <hr>
 
-The big **tl;dr** of `s2i` is you can build your applicaiton with no need to worry about how to actually build it. With `s2i` you get a few components to handle things for you. The first is an `assemble` script which handles the building of the application. The next is a `run` script that handles the running of the application. The `run` script has logic to essentially see what packages exist and then determine which path to start the application (primarily a Python situation). The logic in both scripts is fairly straightforward and works for most situations, but can also be expanded upon by creating your own scripts which allows you to add extra logic into them. We will look at how to customize this towards the end of this post.
+The big **tl;dr** of `s2i` is you can build your application with no need to worry about how to actually build it. With `s2i` you get a few components to handle things for you. The first is an `assemble` script which handles the building of the application. The next is a `run` script that handles the running of the application. The `run` script has logic to essentially see what packages exist and then determine which path to start the application (primarily a Python situation). The logic in both scripts is fairly straightforward and works for most situations, but can also be expanded upon by creating your own scripts which allows you to add extra logic into them. We will look at how to customize this towards the end of this post.
 
 ### Using the `s2i` binary
 
