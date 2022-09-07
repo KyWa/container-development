@@ -87,17 +87,95 @@ This is fine and works well for most people who know how to create a `Dockerfile
 Enter Source-to-Image, or `s2i`
 
 ## What is `s2i`
+
 I am not known for my wordsmithing skills, so I will let the `s2i` repository speak for itself:
 
 <hr>
 Source-to-Image (S2I) is a toolkit and workflow for building reproducible container images from source code. S2I produces ready-to-run images by injecting source code into a container image and letting the container prepare that source code for execution. By creating self-assembling builder images, you can version and control your build environments exactly like you use container images to version your runtime environments.
 <hr>
 
-The big **tl;dr** of `s2i` is you can build your applicaiton with no need to worry about how to actually build it. With `s2i` you get two components to handle things for you. The first is an `assemble` script which handles the building of the Dockerfile and the image itself. The next and final portion is another script that handles the `run` of your script. The `run` script has logic to essentially see what packages exist and then determine which path to start the application. The logic in both scripts is fairly straightforward and works for most situations, but can also be expanded upon by creating your own scripts which allows you to add extra logic into them.
+The big **tl;dr** of `s2i` is you can build your applicaiton with no need to worry about how to actually build it. With `s2i` you get a few components to handle things for you. The first is an `assemble` script which handles the building of the application. The next is a `run` script that handles the running of the application. The `run` script has logic to essentially see what packages exist and then determine which path to start the application (primarily a Python situation). The logic in both scripts is fairly straightforward and works for most situations, but can also be expanded upon by creating your own scripts which allows you to add extra logic into them. We will look at how to customize this towards the end of this post.
+
+### Using the `s2i` binary
+
+Since we talked about not needing to know how to actually build your application, lets do this without a Dockerfile first. The `s2i` binary allows you to do a few things. First of which and the most important to us, is a build. It will make use of `docker` or `podman`, whichever it finds in your `PATH` and then run a build with what is specified. The other common alternative, and this is useful for implementing this into a CI/CD system of some kind, is a `generate` function. This will "do" the `s2i` process, but only up to generating a `Dockerfile` which can then be used or customized further.
+
+#### `s2i build`
+
+This will handle a couple of things, first it will look at the content its given (either by local directory or a git clone) and determine how it should be built. It will then generate a `Dockerfile` which it will then build.
+
+The following will build a Container Image from a local directory
+```sh
+$ s2i build . registry.access.redhat.com/ubi8/python-38 somefuns2i
+---> Installing application source ...
+---> Installing dependencies ...
+Collecting click==8.1.2
+Downloading click-8.1.2-py3-none-any.whl (96 kB)
+Collecting Flask==2.1.1
+Downloading Flask-2.1.1-py3-none-any.whl (95 kB)
+Collecting itsdangerous==2.1.2
+Downloading itsdangerous-2.1.2-py3-none-any.whl (15 kB)
+Collecting Jinja2==3.1.1
+Downloading Jinja2-3.1.1-py3-none-any.whl (132 kB)
+Collecting MarkupSafe==2.1.1
+Downloading MarkupSafe-2.1.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (25 kB)
+Collecting Werkzeug==2.1.1
+Downloading Werkzeug-2.1.1-py3-none-any.whl (224 kB)
+Colleing gunicorn-20.1.0-py3-none-any.whl (79 kB)
+Collecting importlib-metadata>=3.6.0
+Downloading importlib_metadata-4.12.0-py3-none-any.whl (21 kB)
+Requirement already satisfied: setuptools>=3.0 in /opt/app-root/lib/python3.8/site-packages (from gunicorn==20.1.0->-r requirements.txt (line 7)) (41.6.0)
+Collecting zipp>=0.5
+Downloading zipp-3.8.1-py3-none-any.whl (5.6 kB)
+Installing collected packages: zipp, MarkupSafe, Werkzeug, Jinja2, itsdangerous, importlib-metadata, click, gunicorn, Flask
+Successfully installed Flask-2.1.1 Jinja2-3.1.1 MarkupSafe-2.1.1 Werkzeug-2.1.1 click-8.1.2 gunicorn-20.1.0 importlib-metadata-4.12.0 itsdangerous-2.1.2 zipp-3.8.1
+WARNING: You are using pip version 21.2.3; however, version 22.2.2 is available.
+You should consider upgrading via the '/opt/app-root/bin/python3.8 -m pip install --upgrade pip' command.
+Build completed successfully
+```
+
+Same as above, but will pull from a Git repository:
+
+```sh
+$ s2i build https://github.com/someuser/somerepo registry.access.redhat.com/ubi8/python-38 somefuns2i
+```
+
+If we check our local images, we will see that we have a new image:
+
+```sh
+$ docker images
+REPOSITORY       TAG          IMAGE ID       CREATED          SIZE
+somefuns2i       latest       e1f3884208c1   34 seconds ago   861MB
+```
+
+#### `s2i generate`
+
+What if you don't want to build the image right away and want to have it handled somewhere else down the line such as some CI/CD tool? You can use the `generate` function to generate a `Dockerfile` (but you can call it whatever you want) which can then be handed off to something else (such as `buildah`, `podman` or even `docker` itself).
+
+```sh
+$ s2i generate registry.access.redhat.com/ubi8/python-38 Dockerfile
+$ cat Dockerfile
+FROM registry.access.redhat.com/ubi8/python-38
+LABEL "io.openshift.s2i.build.image"="registry.access.redhat.com/ubi8/python-38" \
+      "io.openshift.s2i.scripts-url"="image:///usr/libexec/s2i"
+      
+USER root
+# Copying in source code
+COPY upload/src /tmp/src
+# # Change file ownership to the assemble user. Builder image must support chown command.
+RUN chown -R 1001:0 /tmp/src
+USER 1001
+# # Assemble script sourced from builder image based on user input or image metadata.
+# # If this file does not exist in the image, the build will fail.
+RUN /usr/libexec/s2i/assemble
+# # Run script sourced from builder image based on user input or image metadata.
+# # If this file does not exist in the image, the build will fail.
+CMD /usr/libexec/s2i/run
+```
 
 ### Using an `s2i` base image
 
-There are base images that Red Hat has created that can be used for free based on the Universasl Base Image (UBI). These images can be found from the Red Hat Container Catalaog located here: https://catalog.redhat.com/software/containers/search
+If you wish to customize the `Dockerfile` for your build, there are base images that Red Hat has created that can be used for free based on the Universasl Base Image (UBI). These images can be found from the Red Hat Container Catalaog located here: https://catalog.redhat.com/software/containers/search
 
 Although there are plenty of languages that have pre-built `s2i` images ready for use, we will be focusing on Python. For reference we will be using this [Python 3.8](https://catalog.redhat.com/software/containers/rhel8/python-38/5dde9cb15a13461646f7e6a2) image for our testing. At the bottom of this post you will find [links](#links) which point to the various files that these images use.
 
@@ -196,87 +274,13 @@ user@workstation-$ docker build -t quay.io/kywa/container-development:latest .
 Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
 ```
 
-### Using the `s2i` binary
-Since we talked about not needing to know how to actually build your application, lets do this without a Dockerfile. The `s2i` binary allows you to do a few things. First of which and the most important to us, is a build. It will make use of `docker` or `podman`, whichever it finds in your `PATH` and then run a build with what is specified. The other common alternative, and this is useful for implementing this into a CI/CD system of some kind, is a `generate` function. This will "do" the `s2i` process, but only up to generating a `Dockerfile` which can then be used or customized further.
-
-#### `s2i build`
-This will handle a couple of things, first it will look at the content its given (either by local directory or a git clone) and determine how it should be built. It will then generate a `Dockerfile` which it will then build.
-
-The following will build a Container Image from a local directory
-```sh
-$ s2i build . registry.access.redhat.com/ubi8/python-38 somefuns2i
----> Installing application source ...
----> Installing dependencies ...
-Collecting click==8.1.2
-Downloading click-8.1.2-py3-none-any.whl (96 kB)
-Collecting Flask==2.1.1
-Downloading Flask-2.1.1-py3-none-any.whl (95 kB)
-Collecting itsdangerous==2.1.2
-Downloading itsdangerous-2.1.2-py3-none-any.whl (15 kB)
-Collecting Jinja2==3.1.1
-Downloading Jinja2-3.1.1-py3-none-any.whl (132 kB)
-Collecting MarkupSafe==2.1.1
-Downloading MarkupSafe-2.1.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (25 kB)
-Collecting Werkzeug==2.1.1
-Downloading Werkzeug-2.1.1-py3-none-any.whl (224 kB)
-Colleing gunicorn-20.1.0-py3-none-any.whl (79 kB)
-Collecting importlib-metadata>=3.6.0
-Downloading importlib_metadata-4.12.0-py3-none-any.whl (21 kB)
-Requirement already satisfied: setuptools>=3.0 in /opt/app-root/lib/python3.8/site-packages (from gunicorn==20.1.0->-r requirements.txt (line 7)) (41.6.0)
-Collecting zipp>=0.5
-Downloading zipp-3.8.1-py3-none-any.whl (5.6 kB)
-Installing collected packages: zipp, MarkupSafe, Werkzeug, Jinja2, itsdangerous, importlib-metadata, click, gunicorn, Flask
-Successfully installed Flask-2.1.1 Jinja2-3.1.1 MarkupSafe-2.1.1 Werkzeug-2.1.1 click-8.1.2 gunicorn-20.1.0 importlib-metadata-4.12.0 itsdangerous-2.1.2 zipp-3.8.1
-WARNING: You are using pip version 21.2.3; however, version 22.2.2 is available.
-You should consider upgrading via the '/opt/app-root/bin/python3.8 -m pip install --upgrade pip' command.
-Build completed successfully
-```
-
-Same as above, but will pull from a Git repository:
-
-```sh
-$ s2i build https://github.com/someuser/somerepo registry.access.redhat.com/ubi8/python-38 somefuns2i
-```
-
-If we check our local images, we will see that we have a new image:
-
-```sh
-$ docker images
-REPOSITORY       TAG          IMAGE ID       CREATED          SIZE
-somefuns2i       latest       e1f3884208c1   34 seconds ago   861MB
-```
-
-#### `s2i generate`
-What if you don't want to build the image right away and want to have it handled somewhere else down the line such as some CI/CD tool? You can use the `generate` function to generate a `Dockerfile` (but you can call it whatever you want) which can then be handed off to something else (such as `buildah`, `podman` or even `docker` itself).
-
-```sh
-$ s2i generate registry.access.redhat.com/ubi8/python-38 Dockerfile
-$ cat Dockerfile
-FROM registry.access.redhat.com/ubi8/python-38
-LABEL "io.openshift.s2i.build.image"="registry.access.redhat.com/ubi8/python-38" \
-      "io.openshift.s2i.scripts-url"="image:///usr/libexec/s2i"
-      
-USER root
-# Copying in source code
-COPY upload/src /tmp/src
-# # Change file ownership to the assemble user. Builder image must support chown command.
-RUN chown -R 1001:0 /tmp/src
-USER 1001
-# # Assemble script sourced from builder image based on user input or image metadata.
-# # If this file does not exist in the image, the build will fail.
-RUN /usr/libexec/s2i/assemble
-# # Run script sourced from builder image based on user input or image metadata.
-# # If this file does not exist in the image, the build will fail.
-CMD /usr/libexec/s2i/run
-```
-
 ### Customizing `s2i`
 
 One of the other neat components of `s2i` images is that when it goes to build or run, it detects if your repository has its own `.s2i/` directory and will use whatever scripts you have in there. Sometimes your build may need something other than just language libraries/modules. What if your application needs something else to run, such as ODBC drivers for a database connection? This is how we would do this, by customizing `s2i` with our own scripts that can extend upon what already exists.
 
 If you are already using the `s2i` scripts to build and run your images, you do not have to actually change anything and can keep what is already there. Let's see how to do that:
 
-```
+```sh
 user@workstation-$ tree
 .
 ├── Dockerfile
@@ -295,9 +299,9 @@ user@workstation-$ tree
 └── wsgi.py
 ```
 
-In our repository, we have our main application code as well as a `.s2i/bin` directory with 2 files in it, `assemble` and `run`. These 2 files have different uses but are both picked up by the `ENTRYPOINT` scripts of the existing image. These 2 files will be run at build and run time (`assemble` during build and `run` during runtime), but you can also have these files just be specific customizations you want and then have them run the main `s2i` scripts after or before the customizations. For the `assemble` script, it could look something like this:
+[[In]] our repository, we have our main application code as well as a `.s2i/bin` directory with 2 files in it, `assemble` and `run`. These 2 files have different uses but are both picked up by the `ENTRYPOINT` scripts of the existing image. These 2 files will be run at build and run time (`assemble` during build and `run` during runtime), but you can also have these files just be specific customizations you want and then have them run the main `s2i` scripts after or before the customizations. For the `assemble` script, it could look something like this:
 
-```
+```sh
 user@workstation-$ cat .s2i/bin/assemble
 #!/bin/bash
 
@@ -305,7 +309,8 @@ user@workstation-$ cat .s2i/bin/assemble
 # this file can be used in place of a Dockerfile
 # to patch s2i
 
-echo "hi"
+echo "I'm a customization before the actual application build"
+echo ""
 
 ${STI_SCRIPTS_PATH}/assemble
 ```
@@ -333,13 +338,14 @@ export SOMEVAR=prod
 python3 app.py
 ```
 
-The above is a horrible example, but gets the idea across you could do whatever you need/want to do for your application.
+The above is a horrible example, but gets the idea across you could do whatever you need/want to do for your application. Just note this is going to be run during a step where you are a "mortal" user. If you are needing to complete tasks at an OS level, you will need to make use of a `Dockerfile` where you can specify the `USER`.
 
 Using these custimzations looks like this:
 
 ```
 user@workstation-$ s2i build ./ registry.access.redhat.com/ubi8/python-39:latest
-hi
+I'm a customization before the actual application build
+
 ---> Installing application source ...
 ---> Installing dependencies ...
 Collecting click==8.1.2
@@ -388,9 +394,3 @@ https://github.com/sclorg/s2i-nodejs-container
 
 ### .NET
 https://github.com/redhat-developer/s2i-dotnetcore
-
-I am not a .NET dev (or a developer at all really), but I deal with enough teams who do make use of .NET that I would like to at least showcase it here as well.
-
-## Security
-
-Use DIGESTs!
